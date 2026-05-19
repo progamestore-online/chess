@@ -32,7 +32,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+      # No pnpm cache yet (no lockfile until @progamestore/games is on npm).
+      # Add `cache: pnpm` to setup-node above once the lockfile lands.
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm build
       - run: pnpm test
