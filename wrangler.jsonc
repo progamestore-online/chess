@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "prochess",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-05-01",
+
+  // The Worker serves both the static SPA (via the ASSETS binding) and the
+  // WebSocket multiplayer routes (via the GAME Durable Object). One project,
+  // one deploy — `wrangler deploy`, NOT `wrangler pages deploy`.
+  //
+  // We're on Workers (not Pages) because Pages projects can't declare
+  // Durable Object classes in the same project — they have to bind to a
+  // separate Worker via `script_name`. Going straight to Workers keeps
+  // chess self-contained.
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "GAME", "class_name": "GameDO" }]
+  },
+
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }]
+}

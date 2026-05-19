@@ -1,0 +1,36 @@
+{
+  "name": "prochess",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Online multiplayer chess for ProGameStore — Stockfish analysis, voice control, and real-time games via WebSocket Durable Objects.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/progamestore-online/chess.git"
+  },
+  "homepage": "https://chess.progamestore.online",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @prochess/web dev",
+    "build": "pnpm --filter @prochess/web build",
+    "test": "pnpm --filter @prochess/web test",
+    "preview": "pnpm --filter @prochess/web preview",
+    "deploy": "pnpm build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260519.1",
+    "wrangler": "^4.87.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@>=5.0.0 <5.0.6": ">=5.0.6",
+      "ws@>=8.0.0 <8.20.1": ">=8.20.1"
+    }
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0"
+  }
+}
