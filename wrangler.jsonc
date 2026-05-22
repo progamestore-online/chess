@@ -22,5 +22,9 @@
     "bindings": [{ "name": "GAME", "class_name": "GameDO" }]
   },
 
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }],
+
+  "routes": [
+    { "pattern": "chess.progamestore.online", "zone_name": "progamestore.online", "custom_domain": true }
+  ]
 }
