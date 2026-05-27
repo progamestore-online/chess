@@ -14,7 +14,7 @@ export function ChallengeNotification({ challenges, onAccept, onDecline }: Chall
       {challenges.map(c => (
         <div
           key={c.id}
-          className="flex items-center gap-3 rounded-[1rem] border border-[var(--accent)]/40 bg-[var(--accent)]/10 p-3 animate-in slide-in-from-top"
+          className="flex items-center gap-3 rounded-[0.75rem] border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-3"
         >
           {c.from.avatar && (
             <img

@@ -303,7 +303,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   if (!gameId) {
     return (
       <div className="flex flex-col gap-3 h-full overflow-hidden">
-        {multiGame.games.length > 0 && (
+        {user && multiGame.games.length > 0 && (
           <div className="shrink-0 px-1 pt-1">
             <ActiveGamesStrip
               games={multiGame.games}
@@ -314,7 +314,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
           </div>
         )}
 
-        {lobby.incomingChallenges.length > 0 && (
+        {user && lobby.incomingChallenges.length > 0 && (
           <div className="shrink-0 px-1">
             <ChallengeNotification
               challenges={lobby.incomingChallenges}
@@ -381,8 +381,8 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
             kingGlyph={yourColor === 'w' ? '♚' : '♔'}
             label={opponentInfo?.name ?? (opponentConnected ? 'Opponent' : 'Waiting for opponent...')}
             avatar={opponentInfo?.avatar}
-            right={!opponentConnected && (
-              <span className="ml-auto text-xs text-[var(--muted)] animate-pulse">share the link →</span>
+            right={!opponentConnected && !gameOver && (
+              <span className="ml-auto text-[0.6rem] text-[var(--muted)] animate-pulse">waiting...</span>
             )}
           />
 

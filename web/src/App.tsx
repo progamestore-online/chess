@@ -82,10 +82,10 @@ export default function App() {
               {gameId && (
                 <button
                   aria-label="Back to lobby"
-                  className="flex items-center gap-1 rounded-lg px-3 py-2 min-h-[2.75rem] text-xs font-bold text-[var(--muted)] hover:text-[var(--ink)] transition"
+                  className="flex items-center gap-1 rounded-[0.5rem] px-2.5 py-1.5 text-[0.65rem] font-bold text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--glass-hover)] transition"
                   onClick={goToLobby}
                 >
-                  Lobby
+                  <span className="text-xs">&#8249;</span> Lobby
                 </button>
               )}
               <GameAuth />
