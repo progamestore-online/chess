@@ -97,8 +97,10 @@ export function useLobby(): UseLobbyResult {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/lobby/ws`)
+    let didOpen = false
 
     ws.onopen = () => {
+      didOpen = true
       setConnected(true)
       backoff.current = 1000
       try { ws.send(JSON.stringify({ type: 'get_history', limit: 20 })) } catch {}
@@ -114,6 +116,10 @@ export function useLobby(): UseLobbyResult {
     ws.onclose = () => {
       setConnected(false)
       wsRef.current = null
+      if (!didOpen) {
+        // Server rejected the upgrade (401, network error) — don't retry
+        return
+      }
       reconnectTimer.current = setTimeout(() => {
         backoff.current = Math.min(backoff.current * 2, 30_000)
         connect()
