@@ -14,7 +14,9 @@ const PIECE_MAP: Record<string, string> = {
 }
 
 function MiniBoard({ fen }: { fen: string }) {
-  const rows = fen.split(' ')[0].split('/')
+  const board = (fen || '').split(' ')[0] || ''
+  const rows = board.split('/')
+  if (rows.length !== 8) return <div className="w-full h-full bg-[var(--glass)]" />
 
   return (
     <div className="grid grid-cols-8 grid-rows-8 w-full h-full">

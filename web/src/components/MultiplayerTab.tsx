@@ -134,9 +134,12 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       }
     } else if (msg.type === 'opponent_joined') {
       setOpponentConnected(true)
-      if (msg.opponent) {
+      if (msg.opponent && msg.players) {
+        setPlayers(msg.players)
+      } else if (msg.opponent) {
         setPlayers(prev => {
-          const opColor = yourColor === 'w' ? 'b' : 'w'
+          const myColor = Object.entries(prev).find(([, p]) => p.id === user?.id)?.[0]
+          const opColor = myColor === 'w' ? 'b' : myColor === 'b' ? 'w' : 'b'
           return { ...prev, [opColor]: msg.opponent! }
         })
       }
@@ -152,7 +155,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     } else if (msg.type === 'error') {
       setError(msg.message ?? 'Server error')
     }
-  }, [chess, muted, gameId, user, reportResult, yourColor])
+  }, [chess, muted, gameId, user, reportResult])
 
   const updateGame = multiGame.updateGame
   useEffect(() => {

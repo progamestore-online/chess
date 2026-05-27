@@ -165,11 +165,10 @@ export class LobbyDO extends DurableObject {
     this.broadcast({ type: 'user_left', userId })
     if (this.users.size === 0) this.stopHeartbeat()
 
-    for (const [id, challenge] of this.challenges) {
-      if (challenge.from.id === userId || challenge.to === userId) {
-        this.challenges.delete(id)
-      }
-    }
+    const stale = [...this.challenges.entries()]
+      .filter(([, c]) => c.from.id === userId || c.to === userId)
+      .map(([id]) => id)
+    for (const id of stale) this.challenges.delete(id)
   }
 
   private handleChallenge(fromId: string, targetUserId: string) {
@@ -243,9 +242,10 @@ export class LobbyDO extends DurableObject {
     const user = this.users.get(userId)
     if (!user) return
 
+    const clamped = Math.max(1, Math.min(typeof limit === 'number' ? limit : 20, 50))
     const rows = this.ctx.storage.sql.exec(
       `SELECT * FROM matches WHERE white_id = ? OR black_id = ? ORDER BY finished_at DESC LIMIT ?`,
-      userId, userId, Math.min(limit, 50),
+      userId, userId, clamped,
     ).toArray()
 
     const matches = rows.map((row: Record<string, unknown>) => {
@@ -274,18 +274,21 @@ export class LobbyDO extends DurableObject {
 
     const white = msg.white as { id: string; name: string; avatar: string } | undefined
     const black = msg.black as { id: string; name: string; avatar: string } | undefined
-    if (!white || !black) return
+    if (!white?.id || !black?.id) return
+
+    const rawWinner = msg.winner as string | null | undefined
+    const winner = rawWinner === 'w' || rawWinner === 'b' ? rawWinner : null
+    const reason = typeof msg.reason === 'string' ? msg.reason : 'unknown'
+    const moveCount = typeof msg.moveCount === 'number' && msg.moveCount >= 0 ? msg.moveCount : 0
 
     try {
       this.ctx.storage.sql.exec(
         `INSERT OR IGNORE INTO matches (id, white_id, white_name, white_avatar, black_id, black_name, black_avatar, winner, reason, move_count)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         roomId,
-        white.id, white.name, white.avatar ?? '',
-        black.id, black.name, black.avatar ?? '',
-        (msg.winner as string) ?? null,
-        (msg.reason as string) ?? 'unknown',
-        (msg.moveCount as number) ?? 0,
+        white.id, white.name ?? '', white.avatar ?? '',
+        black.id, black.name ?? '', black.avatar ?? '',
+        winner, reason, moveCount,
       )
     } catch {
       // Duplicate insert is fine (idempotent)
