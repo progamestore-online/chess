@@ -72,15 +72,15 @@ export function playGameOverSound(): void {
 }
 
 // Pick the right sound for a move based on the resulting chess.js move object.
-export function playSoundForMove(move: { captured?: string; san: string }, mutedFlag: boolean): void {
+export function playSoundForMove(move: { captured?: string; san?: string }, mutedFlag: boolean): void {
   if (mutedFlag) return
-  // SAN ending in # is checkmate, + is check
-  if (move.san.endsWith('#')) {
+  const san = move.san ?? ''
+  if (san.endsWith('#')) {
     playCaptureSound()
     setTimeout(() => playGameOverSound(), 120)
     return
   }
-  if (move.san.endsWith('+')) {
+  if (san.endsWith('+')) {
     playCheckSound()
     return
   }

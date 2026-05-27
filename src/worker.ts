@@ -222,7 +222,7 @@ export default {
     }
 
     // GET /api/rooms/{id}/ws — WebSocket upgrade with user identity
-    const wsMatch = url.pathname.match(/^\/api\/rooms\/([a-z0-9-]+)\/ws$/)
+    const wsMatch = url.pathname.match(/^\/api\/rooms\/([a-z0-9]+)\/ws$/)
     if (wsMatch) {
       const id = wsMatch[1]
       if (!ID_RE.test(id)) return new Response('Invalid room id', { status: 400 })
