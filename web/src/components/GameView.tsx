@@ -80,6 +80,10 @@ export function GameView({ game, flipped, onFlip, onNewGame }: GameViewProps) {
       </div>
 
       <div className="flex flex-col gap-2 lg:gap-3 flex-1 lg:min-w-[240px] min-h-0 min-w-0 overflow-y-auto">
+        {game.chess.history().length === 0 && !game.gameOver && (
+          <TimeControlPicker clocks={game.clocks} onSet={game.setTimeControl} />
+        )}
+
         {game.shareUrl && !game.opponentConnected && (
           <div className="flex items-center gap-1.5 rounded-[0.75rem] border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-2.5 py-2">
             <input readOnly value={game.shareUrl} className="flex-1 truncate bg-transparent text-xs text-[var(--ink)] outline-none" onClick={(e) => e.currentTarget.select()} />
@@ -158,5 +162,41 @@ function NavBtn({ children, onClick, disabled }: { children: React.ReactNode; on
     <button type="button" onClick={onClick} disabled={disabled} className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] w-6 h-6 flex items-center justify-center text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-25 transition">
       {children}
     </button>
+  )
+}
+
+const PRESETS = [
+  { label: '1 min', initial: 60, increment: 0 },
+  { label: '3+2', initial: 180, increment: 2 },
+  { label: '5 min', initial: 300, increment: 0 },
+  { label: '10 min', initial: 600, increment: 0 },
+  { label: '15+10', initial: 900, increment: 10 },
+  { label: 'No clock', initial: 0, increment: 0 },
+]
+
+function TimeControlPicker({ clocks, onSet }: { clocks: { w: number; b: number } | null; onSet: (initial: number, increment: number) => void }) {
+  const activeInitial = clocks?.w ?? 0
+  return (
+    <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] p-2.5">
+      <div className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)] mb-2">Time Control</div>
+      <div className="flex flex-wrap gap-1.5">
+        {PRESETS.map(p => {
+          const isActive = p.initial === 0 ? !clocks || activeInitial === 0 : activeInitial === p.initial
+          return (
+            <button
+              key={p.label}
+              onClick={() => onSet(p.initial, p.increment)}
+              className={`rounded-[0.5rem] px-2.5 py-1.5 text-[0.6rem] font-bold transition ${
+                isActive
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'border border-[var(--line)] bg-[var(--glass)] text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--glass-hover)]'
+              }`}
+            >
+              {p.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
