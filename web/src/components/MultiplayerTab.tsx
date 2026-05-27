@@ -375,7 +375,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       )}
 
       <div className="flex flex-col gap-1 landscape:flex-row landscape:gap-3 lg:flex-row lg:gap-6 flex-1 min-h-0 overflow-hidden">
-        <div className="flex flex-col gap-1 lg:gap-2 landscape:w-[min(55%,560px)] lg:w-[min(60%,560px)] min-h-0 shrink-0">
+        <div className="flex flex-col gap-1 lg:gap-2 landscape:w-[min(55%,560px)] lg:w-[min(60%,560px)] min-h-0">
           <PlayerRow
             variant="opponent"
             kingGlyph={yourColor === 'w' ? '♚' : '♔'}
