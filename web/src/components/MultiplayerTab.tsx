@@ -289,17 +289,8 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
 
   const copyShareUrl = useCallback(async () => {
     if (!shareUrl) return
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      const el = document.createElement('textarea')
-      el.value = shareUrl
-      document.body.appendChild(el)
-      el.select()
-      document.execCommand('copy')
-      document.body.removeChild(el)
+    const ok = await copyToClipboard(shareUrl)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     }
@@ -519,7 +510,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
             </div>
             <MoveList
               history={chess.history()}
-              analyses={{}}
               activeReviewMove={reviewMoveIndex}
               onJumpToMove={(idx) => setReviewMoveIndex(idx)}
             />

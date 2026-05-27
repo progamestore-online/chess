@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react'
 
 interface MoveListProps {
   history: string[]
-  analyses?: Record<number, unknown>
   onJumpToMove?: (moveIndex: number) => void
   activeReviewMove?: number | null
 }

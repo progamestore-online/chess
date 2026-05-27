@@ -19,15 +19,10 @@ interface BoardProps {
   selectedSquare?: Square | null
   onSquareClick?: (sq: Square | null) => void
   previewFen?: string | null
-  previewArrow?: { from: Square; to: Square } | null
-  // Label shown in the blue banner over a preview. Defaults to "Best alternative".
-  // Pass an empty string to hide the banner entirely.
   previewLabel?: string
-  // Arrow drawn on the live board (not in preview mode), e.g. for a hint.
-  liveArrow?: { from: Square; to: Square } | null
 }
 
-export function Board({ chess, flipped, playerColor, onMove, lastMove, selectedSquare, onSquareClick, previewFen, previewArrow, previewLabel = 'Best alternative', liveArrow }: BoardProps) {
+export function Board({ chess, flipped, playerColor, onMove, lastMove, selectedSquare, onSquareClick, previewFen, previewLabel = '' }: BoardProps) {
   const [dragFrom, setDragFrom] = useState<Square | null>(null)
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null)
   // When the player drops or taps a pawn onto the back rank, we hold the move
@@ -289,33 +284,6 @@ export function Board({ chess, flipped, playerColor, onMove, lastMove, selectedS
           </text>
         ))}
 
-        {/* Preview arrow for best move */}
-        {isPreview && previewArrow && (() => {
-          const fromCol = files.indexOf(previewArrow.from[0])
-          const fromRow = ranks.indexOf(previewArrow.from[1])
-          const toCol = files.indexOf(previewArrow.to[0])
-          const toRow = ranks.indexOf(previewArrow.to[1])
-          if (fromCol < 0 || fromRow < 0 || toCol < 0 || toRow < 0) return null
-          const x1 = fromCol * 100 + 50
-          const y1 = fromRow * 100 + 50
-          const x2 = toCol * 100 + 50
-          const y2 = toRow * 100 + 50
-          return (
-            <g style={{ pointerEvents: 'none' }}>
-              <defs>
-                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                  <polygon points="0 0, 10 3.5, 0 7" fill="rgba(85, 160, 255, 0.85)" />
-                </marker>
-              </defs>
-              <line
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke="rgba(85, 160, 255, 0.7)" strokeWidth={14} strokeLinecap="round"
-                markerEnd="url(#arrowhead)"
-              />
-            </g>
-          )
-        })()}
-
         {/* Preview overlay label */}
         {isPreview && previewLabel && (
           <rect x={0} y={0} width={800} height={32} fill="rgba(85, 160, 255, 0.85)" rx={0} style={{ pointerEvents: 'none' }} />
@@ -325,33 +293,6 @@ export function Board({ chess, flipped, playerColor, onMove, lastMove, selectedS
             {previewLabel}
           </text>
         )}
-
-        {/* Live arrow (e.g. hint) — only when not previewing */}
-        {!isPreview && liveArrow && (() => {
-          const fromCol = files.indexOf(liveArrow.from[0])
-          const fromRow = ranks.indexOf(liveArrow.from[1])
-          const toCol = files.indexOf(liveArrow.to[0])
-          const toRow = ranks.indexOf(liveArrow.to[1])
-          if (fromCol < 0 || fromRow < 0 || toCol < 0 || toRow < 0) return null
-          const x1 = fromCol * 100 + 50
-          const y1 = fromRow * 100 + 50
-          const x2 = toCol * 100 + 50
-          const y2 = toRow * 100 + 50
-          return (
-            <g style={{ pointerEvents: 'none' }}>
-              <defs>
-                <marker id="hint-arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                  <polygon points="0 0, 10 3.5, 0 7" fill="rgba(255, 200, 80, 0.9)" />
-                </marker>
-              </defs>
-              <line
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke="rgba(255, 200, 80, 0.75)" strokeWidth={14} strokeLinecap="round"
-                markerEnd="url(#hint-arrowhead)"
-              />
-            </g>
-          )
-        })()}
 
         {/* Promotion picker overlay */}
         {!isPreview && pendingPromotion && (() => {

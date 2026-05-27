@@ -1,4 +1,4 @@
-import type React from 'react'
+import React, { Fragment } from 'react'
 import type { GameSlot } from '../types.ts'
 
 interface ActiveGamesStripProps {
@@ -8,12 +8,13 @@ interface ActiveGamesStripProps {
   onRemove: (roomId: string) => void
 }
 
+const PIECE_MAP: Record<string, string> = {
+  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
+  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
+}
+
 function MiniBoard({ fen }: { fen: string }) {
   const rows = fen.split(' ')[0].split('/')
-  const pieceMap: Record<string, string> = {
-    k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
-    K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
-  }
 
   return (
     <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
@@ -25,7 +26,7 @@ function MiniBoard({ fen }: { fen: string }) {
             for (let i = 0; i < parseInt(ch); i++) {
               const light = (r + col) % 2 === 0
               cells.push(
-                <div key={`${r}-${col}`} className={`${light ? 'bg-[var(--glass)]' : 'bg-[var(--line)]'}`} />
+                <div key={`${r}-${col}`} className={light ? 'bg-[var(--glass)]' : 'bg-[var(--line)]'} />
               )
               col++
             }
@@ -33,13 +34,13 @@ function MiniBoard({ fen }: { fen: string }) {
             const light = (r + col) % 2 === 0
             cells.push(
               <div key={`${r}-${col}`} className={`flex items-center justify-center ${light ? 'bg-[var(--glass)]' : 'bg-[var(--line)]'}`}>
-                <span className="text-[0.35rem] leading-none select-none">{pieceMap[ch] ?? ''}</span>
+                <span className="text-[0.35rem] leading-none select-none">{PIECE_MAP[ch] ?? ''}</span>
               </div>
             )
             col++
           }
         }
-        return cells
+        return <Fragment key={r}>{cells}</Fragment>
       })}
     </div>
   )
