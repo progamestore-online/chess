@@ -53,12 +53,57 @@ export class GameDO extends DurableObject {
   private chess: InstanceType<typeof Chess>
   private players: Player[]
   private gameOver: { reason: string; winner: 'w' | 'b' | null } | null
+  private playerRecords: Record<string, { id: string; name: string; avatar: string }>
 
   constructor(state: DurableObjectState, env: unknown) {
     super(state, env)
     this.chess = new Chess()
     this.players = []
     this.gameOver = null
+    this.playerRecords = {}
+
+    this.ctx.blockConcurrencyWhile(async () => {
+      this.ctx.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS game_state (
+          id TEXT PRIMARY KEY DEFAULT 'current',
+          pgn TEXT NOT NULL DEFAULT '',
+          game_over_reason TEXT,
+          game_over_winner TEXT,
+          white_id TEXT, white_name TEXT, white_avatar TEXT,
+          black_id TEXT, black_name TEXT, black_avatar TEXT
+        )
+      `)
+      const rows = this.ctx.storage.sql.exec(`SELECT * FROM game_state WHERE id = 'current'`).toArray()
+      if (rows.length > 0) {
+        const row = rows[0] as Record<string, unknown>
+        const pgn = row.pgn as string
+        if (pgn) {
+          try { this.chess.loadPgn(pgn) } catch { /* corrupt PGN, start fresh */ }
+        }
+        if (row.game_over_reason) {
+          const winner = row.game_over_winner as string | null
+          this.gameOver = {
+            reason: row.game_over_reason as string,
+            winner: winner === 'w' || winner === 'b' ? winner : null,
+          }
+        }
+        if (row.white_id) this.playerRecords.w = { id: row.white_id as string, name: (row.white_name as string) ?? '', avatar: (row.white_avatar as string) ?? '' }
+        if (row.black_id) this.playerRecords.b = { id: row.black_id as string, name: (row.black_name as string) ?? '', avatar: (row.black_avatar as string) ?? '' }
+      }
+    })
+  }
+
+  private persist() {
+    const info = this.getPlayersInfo()
+    this.ctx.storage.sql.exec(
+      `INSERT OR REPLACE INTO game_state (id, pgn, game_over_reason, game_over_winner, white_id, white_name, white_avatar, black_id, black_name, black_avatar)
+       VALUES ('current', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      this.chess.pgn(),
+      this.gameOver?.reason ?? null,
+      this.gameOver?.winner ?? null,
+      info.w?.id ?? null, info.w?.name ?? null, info.w?.avatar ?? null,
+      info.b?.id ?? null, info.b?.name ?? null, info.b?.avatar ?? null,
+    )
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -78,6 +123,8 @@ export class GameDO extends DurableObject {
 
     if (assigned !== 'spectator') {
       this.players.push({ ws: server, color: assigned, userId, name: userName, avatar: userAvatar })
+      this.playerRecords[assigned] = { id: userId, name: userName, avatar: userAvatar }
+      this.persist()
       this.broadcast({ type: 'opponent_joined', opponent: { id: userId, name: userName, avatar: userAvatar } }, server)
     }
 
@@ -123,6 +170,7 @@ export class GameDO extends DurableObject {
       if (!move) return reject('Illegal move')
 
       this.computeGameOver()
+      this.persist()
       this.broadcastAll({
         type: 'move', uci, san: move.san,
         fen: this.chess.fen(), history: this.chess.history(),
@@ -135,6 +183,7 @@ export class GameDO extends DurableObject {
     if (msg.type === 'resign') {
       if (this.gameOver) return
       this.gameOver = { reason: 'resigned', winner: player.color === 'w' ? 'b' : 'w' }
+      this.persist()
       this.broadcastAll({
         type: 'move', uci: '', san: 'resigns',
         fen: this.chess.fen(), history: this.chess.history(),
@@ -147,6 +196,7 @@ export class GameDO extends DurableObject {
     if (msg.type === 'new_game') {
       this.chess = new Chess()
       this.gameOver = null
+      this.persist()
       this.broadcastAll({ type: 'new_game' })
       for (const p of this.players) {
         this.send(p.ws, {
@@ -175,7 +225,7 @@ export class GameDO extends DurableObject {
   }
 
   private getPlayersInfo() {
-    const info: Record<string, { id: string; name: string; avatar: string }> = {}
+    const info: Record<string, { id: string; name: string; avatar: string }> = { ...this.playerRecords }
     for (const p of this.players) {
       info[p.color] = { id: p.userId, name: p.name, avatar: p.avatar }
     }
