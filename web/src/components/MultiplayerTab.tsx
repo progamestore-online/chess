@@ -410,52 +410,59 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 lg:gap-3 flex-1 lg:min-w-[240px] min-h-0 min-w-0 overflow-y-auto">
+        <div className="flex flex-col gap-2 lg:gap-3 flex-1 lg:min-w-[240px] min-h-0 min-w-0 overflow-y-auto">
           {shareUrl && !opponentConnected && (
-            <div className="rounded-[1rem] border border-[var(--accent)]/30 bg-[var(--glass-soft)] p-3 text-sm">
-              <div className="mb-2 text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
-                Share this link
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  readOnly
-                  value={shareUrl}
-                  className="flex-1 truncate rounded-[0.5rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-1.5 text-xs text-[var(--ink)]"
-                  onClick={(e) => e.currentTarget.select()}
-                />
-                <button
-                  className="rounded-[0.5rem] bg-[var(--accent)] px-3 min-h-[2.25rem] text-xs font-semibold text-white"
-                  onClick={copyShareUrl}
-                >
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
+            <div className="flex items-center gap-1.5 rounded-[0.75rem] border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-2.5 py-2">
+              <input
+                readOnly
+                value={shareUrl}
+                className="flex-1 truncate bg-transparent text-xs text-[var(--ink)] outline-none"
+                onClick={(e) => e.currentTarget.select()}
+              />
+              <button
+                className="shrink-0 rounded-[0.5rem] bg-[var(--accent)] px-3 py-1.5 text-[0.65rem] font-bold text-white hover:brightness-110 transition"
+                onClick={copyShareUrl}
+              >
+                {copied ? 'Copied!' : 'Copy link'}
+              </button>
             </div>
           )}
 
-          <div className="flex gap-1.5 shrink-0">
-            <ActionButton onClick={handleNewGame}>New Game</ActionButton>
-            <ActionButton onClick={onFlip}>Flip</ActionButton>
+          <div className="flex gap-1.5 shrink-0 flex-wrap">
+            <button onClick={handleNewGame} className="flex items-center gap-1.5 rounded-[0.5rem] bg-[var(--accent)] px-3 py-2 text-[0.65rem] font-bold text-white hover:brightness-110 transition">
+              + New
+            </button>
+            <button onClick={onFlip} className="flex items-center gap-1.5 rounded-[0.5rem] border border-[var(--line)] bg-[var(--glass)] px-3 py-2 text-[0.65rem] font-bold text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--glass-hover)] transition">
+              Flip
+            </button>
             {isPlayer && !gameOver && (
-              <ActionButton onClick={handleResign}>Resign</ActionButton>
+              <button onClick={handleResign} className="flex items-center gap-1.5 rounded-[0.5rem] border border-red-400/20 bg-red-400/5 px-3 py-2 text-[0.65rem] font-bold text-red-400 hover:bg-red-400/10 transition">
+                Resign
+              </button>
             )}
             {gameOver && isPlayer && (
-              <ActionButton onClick={handleRematch}>Rematch</ActionButton>
+              <button onClick={handleRematch} className="flex items-center gap-1.5 rounded-[0.5rem] bg-[var(--accent)] px-3 py-2 text-[0.65rem] font-bold text-white hover:brightness-110 transition">
+                Rematch
+              </button>
+            )}
+            {gameOver && chess.history().length > 0 && (
+              <button onClick={exportPgn} className="flex items-center gap-1.5 rounded-[0.5rem] border border-[var(--line)] bg-[var(--glass)] px-3 py-2 text-[0.65rem] font-bold text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--glass-hover)] transition">
+                {pgnCopied ? 'Copied!' : 'PGN'}
+              </button>
             )}
           </div>
 
-          <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] px-3 py-2 text-xs">
-            <span className="font-bold text-[var(--ink)]">Status:</span>{' '}
-            <span className="text-[var(--muted)]">
+          {connectionState !== 'open' && (
+            <div className="flex items-center gap-1.5 text-[0.65rem] text-[var(--muted)]">
+              <div className={`w-1.5 h-1.5 rounded-full ${connectionState === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'}`} />
               {connectionState === 'connecting' && 'Connecting...'}
-              {connectionState === 'open' && (opponentConnected ? 'Connected · 2 players' : 'Connected · waiting')}
-              {connectionState === 'closed' && 'Disconnected · reconnecting...'}
+              {connectionState === 'closed' && 'Reconnecting...'}
               {connectionState === 'error' && 'Connection error'}
-            </span>
-          </div>
+            </div>
+          )}
 
           {error && (
-            <div className="rounded-[0.75rem] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <div className="rounded-[0.5rem] border border-red-400/20 bg-red-400/5 px-2.5 py-1.5 text-xs text-red-400">
               {error}
             </div>
           )}
@@ -466,43 +473,20 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
             onPlayAgain={handleRematch}
           />
 
-          {gameOver && chess.history().length > 0 && (
-            <button
-              type="button"
-              onClick={exportPgn}
-              className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass)] px-3 py-2 text-xs font-semibold text-[var(--muted)] hover:bg-[var(--glass-hover)] hover:text-[var(--ink)]"
-            >
-              {pgnCopied ? 'PGN copied ✓' : 'Copy PGN'}
-            </button>
-          )}
-
-          <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--glass-soft)] p-3">
-            <div className="mb-2 flex items-center justify-between">
+          <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] p-2.5">
+            <div className="mb-1.5 flex items-center justify-between">
               <div className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
-                {inReview ? `Reviewing move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? ' (white)' : ' (black)'}` : 'Moves'}
+                {inReview ? `Move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? ' (white)' : ' (black)'}` : 'Moves'}
               </div>
               {chess.history().length > 0 && (
                 <div className="flex gap-0.5">
-                  <button
-                    type="button"
-                    onClick={prevReview}
-                    disabled={reviewMoveIndex === 0}
-                    className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-0.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-30"
-                    title="Previous move"
-                  >‹</button>
-                  <button
-                    type="button"
-                    onClick={nextReview}
-                    disabled={!inReview}
-                    className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-0.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-30"
-                    title="Next move"
-                  >›</button>
+                  <NavBtn onClick={prevReview} disabled={reviewMoveIndex === 0} title="Previous">‹</NavBtn>
+                  <NavBtn onClick={nextReview} disabled={!inReview} title="Next">›</NavBtn>
                   {inReview && (
                     <button
                       type="button"
                       onClick={exitReview}
-                      className="rounded-[0.25rem] border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                      title="Exit review, return to live game"
+                      className="rounded-[0.25rem] bg-[var(--accent)]/10 px-2 py-0.5 text-[0.6rem] font-bold text-[var(--accent)] hover:bg-[var(--accent)]/20 transition"
                     >Live</button>
                   )}
                 </div>
@@ -520,11 +504,14 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   )
 }
 
-function ActionButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function NavBtn({ children, onClick, disabled, title }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; title?: string }) {
   return (
     <button
-      className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass)] px-3 min-h-[2.75rem] min-w-[2.75rem] text-xs font-semibold text-[var(--muted)] hover:bg-[var(--glass-hover)] hover:text-[var(--ink)]"
+      type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] w-6 h-6 flex items-center justify-center text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-25 transition"
     >
       {children}
     </button>
