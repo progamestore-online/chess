@@ -37,15 +37,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Ensure custom domain
-        run: |
-          curl -sS -X PUT \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/workers/domains" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"hostname":"chess.progamestore.online","service":"prochess","zone_id":"04158221bba995befe00df02c6817b86","environment":"production"}' \
-            | jq '.success'
-
       - name: Smoke test
         run: |
           sleep 10
