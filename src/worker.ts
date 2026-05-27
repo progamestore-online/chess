@@ -118,8 +118,12 @@ export class GameDO extends DurableObject {
     const userName = req.headers.get('X-User-Name') ?? 'Anonymous'
     const userAvatar = req.headers.get('X-User-Avatar') ?? ''
 
-    const colors = new Set(this.players.map(p => p.color))
-    const assigned: 'w' | 'b' | 'spectator' = !colors.has('w') ? 'w' : !colors.has('b') ? 'b' : 'spectator'
+    const liveColors = new Set(this.players.map(p => p.color))
+    const returningColor = (this.playerRecords.w?.id === userId && !liveColors.has('w')) ? 'w'
+      : (this.playerRecords.b?.id === userId && !liveColors.has('b')) ? 'b'
+      : null
+    const assigned: 'w' | 'b' | 'spectator' = returningColor
+      ?? (!liveColors.has('w') ? 'w' : !liveColors.has('b') ? 'b' : 'spectator')
 
     if (assigned !== 'spectator') {
       this.players.push({ ws: server, color: assigned, userId, name: userName, avatar: userAvatar })
@@ -160,8 +164,9 @@ export class GameDO extends DurableObject {
     if (msg.type === 'move') {
       if (this.gameOver) return reject('Game is over')
       if (this.chess.turn() !== player.color) return reject('Not your turn')
+      if (typeof msg.uci !== 'string' || msg.uci.length < 4) return reject('Invalid move')
 
-      const uci = msg.uci as string
+      const uci = msg.uci
       const from = uci.slice(0, 2)
       const to = uci.slice(2, 4)
       const promotion = uci.length > 4 ? uci[4] : undefined
@@ -196,6 +201,10 @@ export class GameDO extends DurableObject {
     if (msg.type === 'new_game') {
       this.chess = new Chess()
       this.gameOver = null
+      this.playerRecords = {}
+      for (const p of this.players) {
+        this.playerRecords[p.color] = { id: p.userId, name: p.name, avatar: p.avatar }
+      }
       this.persist()
       this.broadcastAll({ type: 'new_game' })
       for (const p of this.players) {

@@ -455,7 +455,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
             )}
           </div>
 
-          {connectionState !== 'open' && (
+          {connectionState !== 'open' && connectionState !== 'idle' && (
             <div className="flex items-center gap-1.5 text-[0.65rem] text-[var(--muted)]">
               <div className={`w-1.5 h-1.5 rounded-full ${connectionState === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'}`} />
               {connectionState === 'connecting' && 'Connecting...'}
