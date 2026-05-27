@@ -2,21 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Chess, type Square } from 'chess.js'
 import { Board } from './Board.tsx'
 import { GameOverBanner } from './GameOverBanner.tsx'
-import { GameSummary } from './GameSummary.tsx'
 import { MoveList } from './MoveList.tsx'
 import { PlayerRow } from './PlayerRow.tsx'
 import { LobbyView } from './LobbyView.tsx'
 import { ActiveGamesStrip } from './ActiveGamesStrip.tsx'
 import { ChallengeNotification } from './ChallengeNotification.tsx'
-import { analyzePlayerMove } from '../services/analysis.ts'
-import { findOpening } from '../services/openings.ts'
 import { buildPgn, copyToClipboard } from '../services/pgn.ts'
 import { playSoundForMove } from '../services/sounds.ts'
-import { stockfish } from '../services/stockfish.ts'
 import { useSound, useRooms, useAuth } from '@progamestore/games'
 import { useLobby } from '../hooks/useLobby.ts'
 import { useMultiGame } from '../hooks/useMultiGame.ts'
-import type { GameStatus, MoveAnalysis, PlayerInfo } from '../types.ts'
+import type { GameStatus, PlayerInfo } from '../types.ts'
 
 type Color = 'w' | 'b'
 
@@ -61,17 +57,13 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [players, setPlayers] = useState<Record<string, PlayerInfo>>({})
-  const [analyses, setAnalyses] = useState<Record<number, MoveAnalysis>>({})
   const [reviewMoveIndex, setReviewMoveIndex] = useState<number | null>(null)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [analyzeProgress, setAnalyzeProgress] = useState(0)
 
   const shareUrl = useMemo(
     () => (gameId ? `${window.location.origin}/g/${gameId}` : null),
     [gameId],
   )
 
-  // Reset local game state when switching between games
   useEffect(() => {
     chess.reset()
     setFen(chess.fen())
@@ -82,13 +74,9 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     setGameOver(null)
     setError(null)
     setPlayers({})
-    setAnalyses({})
     setReviewMoveIndex(null)
-    setAnalyzing(false)
-    setAnalyzeProgress(0)
   }, [gameId])
 
-  // Listen for challenge accepts → auto-navigate to game
   useEffect(() => {
     return lobby.onChallengeAccepted((roomId) => {
       onLoadGame(roomId)
@@ -166,7 +154,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     }
   }, [chess, muted, gameId, user, reportResult, yourColor])
 
-  // Update multi-game state whenever game state changes
   const updateGame = multiGame.updateGame
   useEffect(() => {
     if (!gameId) return
@@ -231,38 +218,11 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   }, [sendMessage])
 
   const handleRematch = useCallback(() => {
-    setAnalyses({})
     setReviewMoveIndex(null)
-    setAnalyzing(false)
-    setAnalyzeProgress(0)
     sendMessage({ type: 'new_game' })
   }, [sendMessage])
 
-  const runAnalysis = useCallback(async () => {
-    if (yourColor !== 'w' && yourColor !== 'b') return
-    setAnalyzing(true)
-    setAnalyzeProgress(0)
-
-    const useSF = await stockfish.init()
-
-    const replay = new Chess()
-    const moves = chess.history({ verbose: true })
-    let done = 0
-    for (let i = 0; i < moves.length; i++) {
-      const m = moves[i]
-      if (m.color === yourColor && !analyses[i]) {
-        try {
-          const analysis = await analyzePlayerMove(replay, m.san, yourColor, useSF ? 3 : 2)
-          setAnalyses(prev => ({ ...prev, [i]: analysis }))
-        } catch {}
-      }
-      replay.move(m)
-      done++
-      setAnalyzeProgress(Math.round((done / moves.length) * 100))
-    }
-    setAnalyzing(false)
-  }, [chess, yourColor, analyses])
-
+  // Move review (step through history, no analysis)
   const reviewFen = useMemo(() => {
     if (reviewMoveIndex === null) return null
     const replay = new Chess()
@@ -307,8 +267,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     return () => window.removeEventListener('keydown', onKey)
   }, [chess, fen, inReview, prevReview, nextReview, exitReview])
 
-  const opening = useMemo(() => findOpening(chess.history()), [chess, fen])
-
   const [pgnCopied, setPgnCopied] = useState(false)
   const exportPgn = useCallback(async () => {
     const result =
@@ -317,7 +275,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       : (gameOver?.reason === 'stalemate' || gameOver?.reason === 'draw') ? '1/2-1/2'
       : '*'
     const pgn = buildPgn(chess, {
-      event: 'Chess multiplayer',
+      event: 'ProGameStore Chess',
       white: players.w?.name ?? (yourColor === 'w' ? 'You' : 'Opponent'),
       black: players.b?.name ?? (yourColor === 'b' ? 'You' : 'Opponent'),
       result,
@@ -351,7 +309,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   if (!gameId) {
     return (
       <div className="flex flex-col gap-3 h-full overflow-hidden">
-        {/* Active games strip */}
         {multiGame.games.length > 0 && (
           <div className="shrink-0 px-1 pt-1">
             <ActiveGamesStrip
@@ -363,7 +320,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
           </div>
         )}
 
-        {/* Incoming challenges (shown even in lobby) */}
         {lobby.incomingChallenges.length > 0 && (
           <div className="shrink-0 px-1">
             <ChallengeNotification
@@ -403,7 +359,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
 
   return (
     <div className="flex flex-col gap-1 h-full overflow-hidden">
-      {/* Active games strip */}
       {multiGame.games.length > 0 && (
         <div className="shrink-0 px-1 mb-1">
           <ActiveGamesStrip
@@ -415,7 +370,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
         </div>
       )}
 
-      {/* Incoming challenges */}
       {lobby.incomingChallenges.length > 0 && (
         <div className="shrink-0 px-1">
           <ChallengeNotification
@@ -521,34 +475,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
             onPlayAgain={handleRematch}
           />
 
-          {gameOver && isPlayer && Object.keys(analyses).length === 0 && !analyzing && (
-            <button
-              type="button"
-              onClick={runAnalysis}
-              className="rounded-[0.75rem] border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20"
-            >
-              Analyze game · review your moves
-            </button>
-          )}
-
-          {analyzing && (
-            <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] px-3 py-2 text-sm">
-              <div className="mb-1 text-[var(--muted)]">Analyzing... {analyzeProgress}%</div>
-              <div className="h-1 overflow-hidden rounded-full bg-[var(--glass)]">
-                <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${analyzeProgress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {Object.keys(analyses).length > 0 && isPlayer && (
-            <GameSummary
-              analyses={analyses}
-              history={chess.history()}
-              playerColor={yourColor as 'w' | 'b'}
-              onReviewMove={(idx) => setReviewMoveIndex(idx)}
-            />
-          )}
-
           {gameOver && chess.history().length > 0 && (
             <button
               type="button"
@@ -560,12 +486,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
           )}
 
           <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--glass-soft)] p-3">
-            {opening && (
-              <div className="mb-2 flex items-baseline gap-2 border-b border-[var(--line)] pb-2">
-                <span className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">Opening</span>
-                <span className="text-xs font-semibold text-[var(--ink)]">{opening}</span>
-              </div>
-            )}
             <div className="mb-2 flex items-center justify-between">
               <div className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
                 {inReview ? `Reviewing move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? ' (white)' : ' (black)'}` : 'Moves'}
@@ -599,7 +519,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
             </div>
             <MoveList
               history={chess.history()}
-              analyses={analyses}
+              analyses={{}}
               activeReviewMove={reviewMoveIndex}
               onJumpToMove={(idx) => setReviewMoveIndex(idx)}
             />
