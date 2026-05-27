@@ -26,7 +26,5 @@
     { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] }
   ],
 
-  // Route set via CF dashboard — API token lacks Zone:Route:Edit
-  // { "pattern": "chess.progamestore.online", "custom_domain": true }
-  "workers_dev": true
+  "workers_dev": false
 }
