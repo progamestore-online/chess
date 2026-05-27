@@ -13,7 +13,9 @@ interface ServerMsg {
   history?: string[]
   yourColor?: Color | 'spectator'
   opponentConnected?: boolean
-  gameOver?: { reason: 'checkmate' | 'stalemate' | 'draw' | 'resigned'; winner: Color | null } | null
+  gameOver?: { reason: 'checkmate' | 'stalemate' | 'draw' | 'resigned' | 'timeout'; winner: Color | null } | null
+  clocks?: { w: number; b: number; running: boolean } | null
+  timeControl?: { initial: number; increment: number } | null
   uci?: string
   san?: string
   message?: string
@@ -25,6 +27,7 @@ type ClientMsg =
   | { type: 'move'; uci: string }
   | { type: 'resign' }
   | { type: 'new_game' }
+  | { type: 'set_time_control'; initial: number; increment: number }
 
 export interface GameRoomState {
   chess: InstanceType<typeof Chess>
@@ -41,6 +44,7 @@ export interface GameRoomState {
   status: GameStatus
   connectionState: 'open' | 'idle' | 'connecting' | 'error' | 'closed'
   shareUrl: string | null
+  clocks: { w: number; b: number; running: boolean } | null
   // Review
   reviewMoveIndex: number | null
   reviewFen: string | null
@@ -58,6 +62,7 @@ export interface GameRoomState {
   exitReview: () => void
   exportPgn: () => Promise<boolean>
   copyShareUrl: () => Promise<boolean>
+  setTimeControl: (initial: number, increment: number) => void
 }
 
 export function useGameRoom(
@@ -76,6 +81,7 @@ export function useGameRoom(
   const [error, setError] = useState<string | null>(null)
   const [players, setPlayers] = useState<Record<string, PlayerInfo>>({})
   const [reviewMoveIndex, setReviewMoveIndex] = useState<number | null>(null)
+  const [clocks, setClocks] = useState<{ w: number; b: number; running: boolean } | null>(null)
 
   const shareUrl = useMemo(
     () => (gameId ? `${window.location.origin}/g/${gameId}` : null),
@@ -93,6 +99,7 @@ export function useGameRoom(
     setError(null)
     setPlayers({})
     setReviewMoveIndex(null)
+    setClocks(null)
   }, [gameId])
 
   const handleServerMessage = useCallback((msg: ServerMsg) => {
@@ -101,7 +108,10 @@ export function useGameRoom(
       if (msg.yourColor !== undefined) setYourColor(msg.yourColor)
       if (msg.opponentConnected !== undefined) setOpponentConnected(msg.opponentConnected)
       if (msg.players) setPlayers(msg.players)
+      if (msg.clocks) setClocks(msg.clocks)
       setGameOver(msg.gameOver ?? null)
+    } else if (msg.type === 'time_control') {
+      if (msg.clocks) setClocks(msg.clocks)
     } else if (msg.type === 'move') {
       if (msg.uci && msg.uci.length >= 4) {
         const from = msg.uci.slice(0, 2)
@@ -115,6 +125,7 @@ export function useGameRoom(
         } catch {}
       }
       if (msg.players) setPlayers(msg.players)
+      if (msg.clocks) setClocks(msg.clocks)
       if (msg.gameOver) {
         setGameOver(msg.gameOver)
         if (gameId && msg.players && user) {
@@ -168,6 +179,10 @@ export function useGameRoom(
   const handleRematch = useCallback(() => {
     setReviewMoveIndex(null)
     sendMessage({ type: 'new_game' })
+  }, [sendMessage])
+
+  const setTimeControl = useCallback((initial: number, increment: number) => {
+    sendMessage({ type: 'set_time_control', initial, increment })
   }, [sendMessage])
 
   const reviewFen = useMemo(() => {
@@ -233,7 +248,8 @@ export function useGameRoom(
   const status: GameStatus = !gameOver ? 'playing'
     : gameOver.reason === 'checkmate' ? 'checkmate'
     : gameOver.reason === 'stalemate' ? 'stalemate'
-    : gameOver.reason === 'resigned' ? 'resigned' : 'draw'
+    : gameOver.reason === 'resigned' ? 'resigned'
+    : gameOver.reason === 'timeout' ? 'timeout' : 'draw'
 
   return {
     chess, fen, yourColor, opponentConnected, lastMove, selectedSquare,
@@ -241,5 +257,6 @@ export function useGameRoom(
     shareUrl, reviewMoveIndex, reviewFen, reviewLastMove, inReview,
     handleMove, handleNewGame, handleResign, handleRematch, setSelectedSquare,
     jumpToMove, prevReview, nextReview, exitReview, exportPgn, copyShareUrl: copyShareUrlFn,
+    clocks, setTimeControl,
   }
 }

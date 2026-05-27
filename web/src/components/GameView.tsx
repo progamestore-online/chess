@@ -18,6 +18,7 @@ export function GameView({ game, flipped, onFlip, onNewGame }: GameViewProps) {
 
   const boardFlipped = flipped !== (game.yourColor === 'b')
   const opColor = game.yourColor === 'w' ? 'b' : 'w'
+  const myColor = game.yourColor === 'w' || game.yourColor === 'b' ? game.yourColor : null
   const opponentInfo = game.players[opColor]
 
   const handleCopyLink = async () => {
@@ -38,7 +39,9 @@ export function GameView({ game, flipped, onFlip, onNewGame }: GameViewProps) {
           kingGlyph={game.yourColor === 'w' ? '♚' : '♔'}
           label={opponentInfo?.name ?? (game.opponentConnected ? 'Opponent' : 'Waiting for opponent...')}
           avatar={opponentInfo?.avatar}
-          right={!game.opponentConnected && !game.gameOver && (
+          clock={game.clocks ? game.clocks[opColor] : undefined}
+          clockActive={game.clocks?.running && game.chess.turn() === opColor}
+          right={!game.opponentConnected && !game.gameOver && !game.clocks && (
             <span className="ml-auto text-[0.6rem] text-[var(--muted)] animate-pulse">waiting...</span>
           )}
         />
@@ -65,7 +68,9 @@ export function GameView({ game, flipped, onFlip, onNewGame }: GameViewProps) {
               ? game.players[game.yourColor]?.name ?? `You (${game.yourColor === 'w' ? 'White' : 'Black'})`
               : 'Spectating'
           }
-          avatar={game.yourColor === 'w' || game.yourColor === 'b' ? game.players[game.yourColor]?.avatar : undefined}
+          avatar={myColor ? game.players[myColor]?.avatar : undefined}
+          clock={game.clocks && myColor ? game.clocks[myColor] : undefined}
+          clockActive={game.clocks?.running && myColor === game.chess.turn()}
           right={game.isYourTurn && (
             <span className="ml-1 rounded-full bg-[var(--success)]/15 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider text-[var(--success)]">
               Your turn

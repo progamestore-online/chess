@@ -14,6 +14,7 @@ export function GameOverBanner({ status, playerLost, onPlayAgain }: GameOverBann
     : status === 'stalemate' ? 'Stalemate — Draw'
     : status === 'draw' ? 'Draw'
     : status === 'resigned' ? (playerLost ? 'You Resigned' : 'Opponent Resigned')
+    : status === 'timeout' ? (playerLost ? 'Time Out — You Lost' : 'Opponent Timed Out')
     : ''
 
   return (

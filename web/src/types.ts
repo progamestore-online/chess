@@ -1,4 +1,4 @@
-export type GameStatus = 'playing' | 'checkmate' | 'stalemate' | 'draw' | 'resigned'
+export type GameStatus = 'playing' | 'checkmate' | 'stalemate' | 'draw' | 'resigned' | 'timeout'
 
 // --- Lobby & Multi-game types ---
 
