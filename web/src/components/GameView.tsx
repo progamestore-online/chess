@@ -9,9 +9,10 @@ interface GameViewProps {
   game: GameRoomState
   flipped: boolean
   onFlip: () => void
+  onNewGame: () => void
 }
 
-export function GameView({ game, flipped, onFlip }: GameViewProps) {
+export function GameView({ game, flipped, onFlip, onNewGame }: GameViewProps) {
   const [copied, setCopied] = useState(false)
   const [pgnCopied, setPgnCopied] = useState(false)
 
@@ -59,8 +60,12 @@ export function GameView({ game, flipped, onFlip }: GameViewProps) {
         <PlayerRow
           variant="player"
           kingGlyph={game.yourColor === 'w' ? '♔' : game.yourColor === 'b' ? '♚' : '♔'}
-          label={game.players[game.yourColor as string]?.name ?? (game.yourColor === 'spectator' ? 'Spectating' : `You (${game.yourColor === 'w' ? 'White' : 'Black'})`)}
-          avatar={game.players[game.yourColor as string]?.avatar}
+          label={
+            game.yourColor === 'w' || game.yourColor === 'b'
+              ? game.players[game.yourColor]?.name ?? `You (${game.yourColor === 'w' ? 'White' : 'Black'})`
+              : 'Spectating'
+          }
+          avatar={game.yourColor === 'w' || game.yourColor === 'b' ? game.players[game.yourColor]?.avatar : undefined}
           right={game.isYourTurn && (
             <span className="ml-1 rounded-full bg-[var(--success)]/15 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider text-[var(--success)]">
               Your turn
@@ -80,7 +85,7 @@ export function GameView({ game, flipped, onFlip }: GameViewProps) {
         )}
 
         <div className="flex gap-1.5 shrink-0 flex-wrap">
-          <Btn variant="primary" onClick={game.handleNewGame}>+ New</Btn>
+          <Btn variant="primary" onClick={onNewGame}>+ New</Btn>
           <Btn variant="ghost" onClick={onFlip}>Flip</Btn>
           {game.isPlayer && !game.gameOver && <Btn variant="danger" onClick={game.handleResign}>Resign</Btn>}
           {game.gameOver && game.isPlayer && <Btn variant="primary" onClick={game.handleRematch}>Rematch</Btn>}

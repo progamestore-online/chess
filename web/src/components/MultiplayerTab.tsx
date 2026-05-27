@@ -83,7 +83,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
           <ChallengeNotification challenges={lobby.incomingChallenges} onAccept={lobby.acceptChallenge} onDecline={lobby.declineChallenge} />
         </div>
       )}
-      <GameView game={game} flipped={flipped} onFlip={onFlip} />
+      <GameView game={game} flipped={flipped} onFlip={onFlip} onNewGame={handleNewGame} />
     </div>
   )
 }
