@@ -1,17 +1,9 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "prochess",
-  "main": "src/worker.js",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-05-01",
 
-  // The Worker serves both the static SPA (via the ASSETS binding) and the
-  // WebSocket multiplayer routes (via the GAME Durable Object). One project,
-  // one deploy — `wrangler deploy`, NOT `wrangler pages deploy`.
-  //
-  // We're on Workers (not Pages) because Pages projects can't declare
-  // Durable Object classes in the same project — they have to bind to a
-  // separate Worker via `script_name`. Going straight to Workers keeps
-  // chess self-contained.
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",
@@ -19,12 +11,22 @@
   },
 
   "durable_objects": {
-    "bindings": [{ "name": "GAME", "class_name": "GameDO" }]
+    "bindings": [
+      { "name": "GAME", "class_name": "GameDO" },
+      { "name": "LOBBY", "class_name": "LobbyDO" }
+    ]
   },
 
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }],
+  "services": [
+    { "binding": "AUTH", "service": "progamestore-auth" }
+  ],
 
-  "routes": [
-    { "pattern": "chess.progamestore.online", "zone_name": "progamestore.online", "custom_domain": true }
-  ]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] }
+  ],
+
+  // Route set via CF dashboard — API token lacks Zone:Route:Edit
+  // { "pattern": "chess.progamestore.online", "custom_domain": true }
+  "workers_dev": true
 }

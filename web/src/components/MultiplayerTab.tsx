@@ -5,13 +5,18 @@ import { GameOverBanner } from './GameOverBanner.tsx'
 import { GameSummary } from './GameSummary.tsx'
 import { MoveList } from './MoveList.tsx'
 import { PlayerRow } from './PlayerRow.tsx'
+import { LobbyView } from './LobbyView.tsx'
+import { ActiveGamesStrip } from './ActiveGamesStrip.tsx'
+import { ChallengeNotification } from './ChallengeNotification.tsx'
 import { analyzePlayerMove } from '../services/analysis.ts'
 import { findOpening } from '../services/openings.ts'
 import { buildPgn, copyToClipboard } from '../services/pgn.ts'
 import { playSoundForMove } from '../services/sounds.ts'
 import { stockfish } from '../services/stockfish.ts'
-import { useSound, useRooms } from '@progamestore/games'
-import type { GameStatus, MoveAnalysis } from '../types.ts'
+import { useSound, useRooms, useAuth } from '@progamestore/games'
+import { useLobby } from '../hooks/useLobby.ts'
+import { useMultiGame } from '../hooks/useMultiGame.ts'
+import type { GameStatus, MoveAnalysis, PlayerInfo } from '../types.ts'
 
 type Color = 'w' | 'b'
 
@@ -25,19 +30,16 @@ interface ServerMsg {
   uci?: string
   san?: string
   message?: string
+  players?: Record<string, PlayerInfo>
+  opponent?: PlayerInfo
 }
 
-// Outgoing messages: just three. The protocol is intentionally tiny —
-// the DO is the source of truth, so the client only needs to ask for a
-// move, a resign, or a fresh game.
 type ClientMsg =
   | { type: 'move'; uci: string }
   | { type: 'resign' }
   | { type: 'new_game' }
 
 interface MultiplayerTabProps {
-  // Named gameId at the prop level (App.tsx route is /g/<id>) but semantically
-  // a roomId — passed straight through to useRooms({ roomId }).
   gameId: string | null
   onLoadGame: (id: string) => void
   flipped: boolean
@@ -46,6 +48,9 @@ interface MultiplayerTabProps {
 
 export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: MultiplayerTabProps) {
   const { muted } = useSound()
+  const { user } = useAuth()
+  const lobby = useLobby()
+  const multiGame = useMultiGame()
   const [chess] = useState(() => new Chess())
   const [fen, setFen] = useState(chess.fen())
   const [yourColor, setYourColor] = useState<Color | 'spectator' | null>(null)
@@ -55,7 +60,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   const [gameOver, setGameOver] = useState<ServerMsg['gameOver']>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  // Post-game review state
+  const [players, setPlayers] = useState<Record<string, PlayerInfo>>({})
   const [analyses, setAnalyses] = useState<Record<number, MoveAnalysis>>({})
   const [reviewMoveIndex, setReviewMoveIndex] = useState<number | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
@@ -66,9 +71,40 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     [gameId],
   )
 
-  // Multiplayer transport — all WebSocket bookkeeping (connect on roomId,
-  // JSON parse, close cleanup) lives in the hook. We just translate server
-  // messages into local chess state here.
+  // Reset local game state when switching between games
+  useEffect(() => {
+    chess.reset()
+    setFen(chess.fen())
+    setYourColor(null)
+    setOpponentConnected(false)
+    setLastMove(null)
+    setSelectedSquare(null)
+    setGameOver(null)
+    setError(null)
+    setPlayers({})
+    setAnalyses({})
+    setReviewMoveIndex(null)
+    setAnalyzing(false)
+    setAnalyzeProgress(0)
+  }, [gameId])
+
+  // Listen for challenge accepts → auto-navigate to game
+  useEffect(() => {
+    return lobby.onChallengeAccepted((roomId) => {
+      onLoadGame(roomId)
+      multiGame.addGame({
+        roomId,
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        yourColor: 'w',
+        opponentName: '',
+        opponentAvatar: '',
+        isYourTurn: true,
+        gameOver: false,
+      })
+    })
+  }, [lobby.onChallengeAccepted, onLoadGame, multiGame.addGame])
+
+  const reportResult = lobby.reportResult
   const handleServerMessage = useCallback((msg: ServerMsg) => {
     if (msg.type === 'state') {
       if (msg.fen) {
@@ -77,6 +113,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       }
       if (msg.yourColor !== undefined) setYourColor(msg.yourColor)
       if (msg.opponentConnected !== undefined) setOpponentConnected(msg.opponentConnected)
+      if (msg.players) setPlayers(msg.players)
       setGameOver(msg.gameOver ?? null)
     } else if (msg.type === 'move') {
       if (msg.uci && msg.uci.length >= 4) {
@@ -88,14 +125,33 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
           setFen(chess.fen())
           setLastMove({ from: from as Square, to: to as Square })
           if (played) playSoundForMove(played, muted)
-        } catch {
-          // Server applied a move our local chess.js refused; the next
-          // 'state' broadcast will resync. Silent.
+        } catch {}
+      }
+      if (msg.players) setPlayers(msg.players)
+      if (msg.gameOver) {
+        setGameOver(msg.gameOver)
+        if (gameId && msg.players && user) {
+          const p = msg.players
+          if (p.w && p.b) {
+            reportResult({
+              roomId: gameId,
+              white: p.w,
+              black: p.b,
+              winner: msg.gameOver.winner,
+              reason: msg.gameOver.reason,
+              moveCount: chess.history().length,
+            })
+          }
         }
       }
-      setGameOver(msg.gameOver ?? null)
     } else if (msg.type === 'opponent_joined') {
       setOpponentConnected(true)
+      if (msg.opponent) {
+        setPlayers(prev => {
+          const opColor = yourColor === 'w' ? 'b' : 'w'
+          return { ...prev, [opColor]: msg.opponent! }
+        })
+      }
     } else if (msg.type === 'opponent_left') {
       setOpponentConnected(false)
     } else if (msg.type === 'new_game') {
@@ -108,7 +164,23 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     } else if (msg.type === 'error') {
       setError(msg.message ?? 'Server error')
     }
-  }, [chess, muted])
+  }, [chess, muted, gameId, user, reportResult, yourColor])
+
+  // Update multi-game state whenever game state changes
+  const updateGame = multiGame.updateGame
+  useEffect(() => {
+    if (!gameId) return
+    const opColor = yourColor === 'w' ? 'b' : 'w'
+    const opponent = players[opColor]
+    updateGame(gameId, {
+      fen,
+      yourColor: yourColor === 'w' || yourColor === 'b' ? yourColor : 'w',
+      opponentName: opponent?.name ?? '',
+      opponentAvatar: opponent?.avatar ?? '',
+      isYourTurn: (yourColor === 'w' || yourColor === 'b') && chess.turn() === yourColor && !gameOver,
+      gameOver: !!gameOver,
+    })
+  }, [fen, yourColor, gameOver, players, gameId, updateGame])
 
   const room = useRooms<ServerMsg, ClientMsg>({
     gameId: 'chess',
@@ -128,7 +200,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     if (gameOver) return false
 
     const uci = `${from}${to}${promotion ?? ''}`
-    // Validate locally first for a snappy UX; server will re-validate.
     let move
     try { move = chess.move({ from, to, promotion }) } catch { return false }
     if (!move) return false
@@ -144,7 +215,16 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
   const handleNewGame = useCallback(async () => {
     const id = await room.create()
     onLoadGame(id)
-  }, [room, onLoadGame])
+    multiGame.addGame({
+      roomId: id,
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      yourColor: 'w',
+      opponentName: '',
+      opponentAvatar: '',
+      isYourTurn: true,
+      gameOver: false,
+    })
+  }, [room, onLoadGame, multiGame])
 
   const handleResign = useCallback(() => {
     sendMessage({ type: 'resign' })
@@ -158,15 +238,11 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     sendMessage({ type: 'new_game' })
   }, [sendMessage])
 
-  // Run Stockfish-backed analysis on every move (skipping spectator games and
-  // already-analyzed moves). Runs serially through the move history; queue
-  // ordering is enforced by stockfish.ts so concurrent calls are safe.
   const runAnalysis = useCallback(async () => {
     if (yourColor !== 'w' && yourColor !== 'b') return
     setAnalyzing(true)
     setAnalyzeProgress(0)
 
-    // Make sure Stockfish is loaded; fall back to minimax via difficulty < 3
     const useSF = await stockfish.init()
 
     const replay = new Chess()
@@ -178,9 +254,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
         try {
           const analysis = await analyzePlayerMove(replay, m.san, yourColor, useSF ? 3 : 2)
           setAnalyses(prev => ({ ...prev, [i]: analysis }))
-        } catch {
-          // Analysis can fail mid-game (Stockfish hiccup); just skip the move.
-        }
+        } catch {}
       }
       replay.move(m)
       done++
@@ -189,7 +263,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     setAnalyzing(false)
   }, [chess, yourColor, analyses])
 
-  // Review helpers — same shape as PlayTab
   const reviewFen = useMemo(() => {
     if (reviewMoveIndex === null) return null
     const replay = new Chess()
@@ -245,8 +318,8 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       : '*'
     const pgn = buildPgn(chess, {
       event: 'Chess multiplayer',
-      white: yourColor === 'w' ? 'You' : 'Opponent',
-      black: yourColor === 'b' ? 'You' : 'Opponent',
+      white: players.w?.name ?? (yourColor === 'w' ? 'You' : 'Opponent'),
+      black: players.b?.name ?? (yourColor === 'b' ? 'You' : 'Opponent'),
       result,
     })
     const ok = await copyToClipboard(pgn)
@@ -254,7 +327,7 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       setPgnCopied(true)
       setTimeout(() => setPgnCopied(false), 1500)
     }
-  }, [chess, gameOver, yourColor])
+  }, [chess, gameOver, yourColor, players])
 
   const copyShareUrl = useCallback(async () => {
     if (!shareUrl) return
@@ -263,7 +336,6 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      // Older browsers: select-and-copy fallback
       const el = document.createElement('textarea')
       el.value = shareUrl
       document.body.appendChild(el)
@@ -275,25 +347,47 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     }
   }, [shareUrl])
 
+  // --- Lobby view (no game focused) ---
   if (!gameId) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
-        <div className="max-w-md rounded-[1rem] border border-[var(--line)] bg-[var(--glass-soft)] p-6 text-center">
-          <h2 className="text-xl font-bold text-[var(--ink)]">Play with a friend</h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            Create a game, share the link, play side-by-side. No accounts, no clocks, no fuss.
-          </p>
-          <button
-            className="mt-5 rounded-full bg-[var(--accent)] px-6 min-h-[2.75rem] text-sm font-semibold text-white"
-            onClick={handleNewGame}
-          >
-            Create game
-          </button>
+      <div className="flex flex-col gap-3 h-full overflow-hidden">
+        {/* Active games strip */}
+        {multiGame.games.length > 0 && (
+          <div className="shrink-0 px-1 pt-1">
+            <ActiveGamesStrip
+              games={multiGame.games}
+              activeGameId={multiGame.activeGameId}
+              onSwitch={(id) => { multiGame.switchTo(id); onLoadGame(id) }}
+              onRemove={multiGame.removeGame}
+            />
+          </div>
+        )}
+
+        {/* Incoming challenges (shown even in lobby) */}
+        {lobby.incomingChallenges.length > 0 && (
+          <div className="shrink-0 px-1">
+            <ChallengeNotification
+              challenges={lobby.incomingChallenges}
+              onAccept={lobby.acceptChallenge}
+              onDecline={lobby.declineChallenge}
+            />
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <LobbyView
+            onlineUsers={lobby.onlineUsers}
+            history={lobby.history}
+            connected={lobby.connected}
+            onChallenge={lobby.challenge}
+            onCreateGame={handleNewGame}
+          />
         </div>
       </div>
     )
   }
 
+  // --- Active game view ---
   const isPlayer = yourColor === 'w' || yourColor === 'b'
   const isYourTurn = isPlayer && chess.turn() === yourColor && !gameOver
   const boardFlipped = flipped !== (yourColor === 'b')
@@ -304,183 +398,212 @@ export function MultiplayerTab({ gameId, onLoadGame, flipped, onFlip }: Multipla
     : gameOver.reason === 'resigned' ? 'resigned'
     : 'draw'
 
+  const opColor = yourColor === 'w' ? 'b' : 'w'
+  const opponentInfo = players[opColor]
+
   return (
-    <div className="flex flex-col gap-1 landscape:flex-row landscape:gap-3 lg:flex-row lg:gap-6 h-full overflow-hidden">
-      <div className="flex flex-col gap-1 lg:gap-2 landscape:w-[min(55%,560px)] lg:w-[min(60%,560px)] min-h-0 shrink-0">
-        <PlayerRow
-          variant="opponent"
-          kingGlyph={yourColor === 'w' ? '♚' : '♔'}
-          label={opponentConnected ? 'Opponent' : 'Waiting for opponent...'}
-          right={!opponentConnected && (
-            <span className="ml-auto text-xs text-[var(--muted)] animate-pulse">share the link →</span>
-          )}
-        />
+    <div className="flex flex-col gap-1 h-full overflow-hidden">
+      {/* Active games strip */}
+      {multiGame.games.length > 0 && (
+        <div className="shrink-0 px-1 mb-1">
+          <ActiveGamesStrip
+            games={multiGame.games}
+            activeGameId={gameId}
+            onSwitch={(id) => { multiGame.switchTo(id); onLoadGame(id) }}
+            onRemove={multiGame.removeGame}
+          />
+        </div>
+      )}
 
-        <div className="flex-1 min-h-0">
-          <Board
-            chess={chess}
-            flipped={boardFlipped}
-            playerColor={isPlayer ? yourColor : 'w'}
-            onMove={handleMove}
-            lastMove={inReview ? reviewLastMove : lastMove}
-            selectedSquare={inReview ? null : selectedSquare}
-            onSquareClick={(sq) => setSelectedSquare(sq)}
-            previewFen={inReview ? reviewFen : null}
-            previewLabel={inReview ? `Move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? '' : '...'}` : ''}
+      {/* Incoming challenges */}
+      {lobby.incomingChallenges.length > 0 && (
+        <div className="shrink-0 px-1">
+          <ChallengeNotification
+            challenges={lobby.incomingChallenges}
+            onAccept={lobby.acceptChallenge}
+            onDecline={lobby.declineChallenge}
+          />
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1 landscape:flex-row landscape:gap-3 lg:flex-row lg:gap-6 flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col gap-1 lg:gap-2 landscape:w-[min(55%,560px)] lg:w-[min(60%,560px)] min-h-0 shrink-0">
+          <PlayerRow
+            variant="opponent"
+            kingGlyph={yourColor === 'w' ? '♚' : '♔'}
+            label={opponentInfo?.name ?? (opponentConnected ? 'Opponent' : 'Waiting for opponent...')}
+            avatar={opponentInfo?.avatar}
+            right={!opponentConnected && (
+              <span className="ml-auto text-xs text-[var(--muted)] animate-pulse">share the link →</span>
+            )}
+          />
+
+          <div className="flex-1 min-h-0">
+            <Board
+              chess={chess}
+              flipped={boardFlipped}
+              playerColor={isPlayer ? yourColor : 'w'}
+              onMove={handleMove}
+              lastMove={inReview ? reviewLastMove : lastMove}
+              selectedSquare={inReview ? null : selectedSquare}
+              onSquareClick={(sq) => setSelectedSquare(sq)}
+              previewFen={inReview ? reviewFen : null}
+              previewLabel={inReview ? `Move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? '' : '...'}` : ''}
+            />
+          </div>
+
+          <PlayerRow
+            variant="player"
+            kingGlyph={yourColor === 'w' ? '♔' : yourColor === 'b' ? '♚' : '♔'}
+            label={players[yourColor as string]?.name ?? (yourColor === 'spectator' ? 'Spectating' : `You (${yourColor === 'w' ? 'White' : 'Black'})`)}
+            avatar={players[yourColor as string]?.avatar}
+            right={isYourTurn && (
+              <span className="ml-1 rounded-full bg-[var(--success)]/15 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider text-[var(--success)]">
+                Your turn
+              </span>
+            )}
           />
         </div>
 
-        <PlayerRow
-          variant="player"
-          kingGlyph={yourColor === 'w' ? '♔' : yourColor === 'b' ? '♚' : '♔'}
-          label={yourColor === 'spectator' ? 'Spectating' : `You (${yourColor === 'w' ? 'White' : 'Black'})`}
-          right={isYourTurn && (
-            <span className="ml-1 rounded-full bg-[var(--success)]/15 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider text-[var(--success)]">
-              Your turn
-            </span>
-          )}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5 lg:gap-3 flex-1 lg:min-w-[240px] min-h-0 min-w-0 overflow-y-auto">
-        {shareUrl && !opponentConnected && (
-          <div className="rounded-[1rem] border border-[var(--accent)]/30 bg-[var(--glass-soft)] p-3 text-sm">
-            <div className="mb-2 text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
-              Share this link
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={shareUrl}
-                className="flex-1 truncate rounded-[0.5rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-1.5 text-xs text-[var(--ink)]"
-                onClick={(e) => e.currentTarget.select()}
-              />
-              <button
-                className="rounded-[0.5rem] bg-[var(--accent)] px-3 min-h-[2.25rem] text-xs font-semibold text-white"
-                onClick={copyShareUrl}
-              >
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex gap-1.5 shrink-0">
-          <ActionButton onClick={handleNewGame}>New Game</ActionButton>
-          <ActionButton onClick={onFlip}>Flip</ActionButton>
-          {isPlayer && !gameOver && (
-            <ActionButton onClick={handleResign}>Resign</ActionButton>
-          )}
-          {gameOver && isPlayer && (
-            <ActionButton onClick={handleRematch}>Rematch</ActionButton>
-          )}
-        </div>
-
-        <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] px-3 py-2 text-xs">
-          <span className="font-bold text-[var(--ink)]">Status:</span>{' '}
-          <span className="text-[var(--muted)]">
-            {connectionState === 'connecting' && 'Connecting...'}
-            {connectionState === 'open' && (opponentConnected ? 'Connected · 2 players' : 'Connected · waiting')}
-            {connectionState === 'closed' && 'Disconnected · reconnecting...'}
-            {connectionState === 'error' && 'Connection error'}
-          </span>
-        </div>
-
-        {error && (
-          <div className="rounded-[0.75rem] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        <GameOverBanner
-          status={status}
-          playerLost={!!gameOver && gameOver.winner !== null && gameOver.winner !== yourColor}
-          onPlayAgain={handleRematch}
-        />
-
-        {/* Post-game review CTA. Shown when game is over and not yet analyzed. */}
-        {gameOver && isPlayer && Object.keys(analyses).length === 0 && !analyzing && (
-          <button
-            type="button"
-            onClick={runAnalysis}
-            className="rounded-[0.75rem] border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20"
-          >
-            Analyze game · review your moves
-          </button>
-        )}
-
-        {analyzing && (
-          <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] px-3 py-2 text-sm">
-            <div className="mb-1 text-[var(--muted)]">Analyzing... {analyzeProgress}%</div>
-            <div className="h-1 overflow-hidden rounded-full bg-[var(--glass)]">
-              <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${analyzeProgress}%` }} />
-            </div>
-          </div>
-        )}
-
-        {Object.keys(analyses).length > 0 && isPlayer && (
-          <GameSummary
-            analyses={analyses}
-            history={chess.history()}
-            playerColor={yourColor as 'w' | 'b'}
-            onReviewMove={(idx) => setReviewMoveIndex(idx)}
-          />
-        )}
-
-        {gameOver && chess.history().length > 0 && (
-          <button
-            type="button"
-            onClick={exportPgn}
-            className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass)] px-3 py-2 text-xs font-semibold text-[var(--muted)] hover:bg-[var(--glass-hover)] hover:text-[var(--ink)]"
-          >
-            {pgnCopied ? 'PGN copied ✓' : 'Copy PGN'}
-          </button>
-        )}
-
-        <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--glass-soft)] p-3">
-          {opening && (
-            <div className="mb-2 flex items-baseline gap-2 border-b border-[var(--line)] pb-2">
-              <span className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">Opening</span>
-              <span className="text-xs font-semibold text-[var(--ink)]">{opening}</span>
-            </div>
-          )}
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
-              {inReview ? `Reviewing move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? ' (white)' : ' (black)'}` : 'Moves'}
-            </div>
-            {chess.history().length > 0 && (
-              <div className="flex gap-0.5">
-                <button
-                  type="button"
-                  onClick={prevReview}
-                  disabled={reviewMoveIndex === 0}
-                  className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-0.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-30"
-                  title="Previous move"
-                >‹</button>
-                <button
-                  type="button"
-                  onClick={nextReview}
-                  disabled={!inReview}
-                  className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-0.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-30"
-                  title="Next move"
-                >›</button>
-                {inReview && (
-                  <button
-                    type="button"
-                    onClick={exitReview}
-                    className="rounded-[0.25rem] border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                    title="Exit review, return to live game"
-                  >Live</button>
-                )}
+        <div className="flex flex-col gap-1.5 lg:gap-3 flex-1 lg:min-w-[240px] min-h-0 min-w-0 overflow-y-auto">
+          {shareUrl && !opponentConnected && (
+            <div className="rounded-[1rem] border border-[var(--accent)]/30 bg-[var(--glass-soft)] p-3 text-sm">
+              <div className="mb-2 text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
+                Share this link
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={shareUrl}
+                  className="flex-1 truncate rounded-[0.5rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-1.5 text-xs text-[var(--ink)]"
+                  onClick={(e) => e.currentTarget.select()}
+                />
+                <button
+                  className="rounded-[0.5rem] bg-[var(--accent)] px-3 min-h-[2.25rem] text-xs font-semibold text-white"
+                  onClick={copyShareUrl}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-1.5 shrink-0">
+            <ActionButton onClick={handleNewGame}>New Game</ActionButton>
+            <ActionButton onClick={onFlip}>Flip</ActionButton>
+            {isPlayer && !gameOver && (
+              <ActionButton onClick={handleResign}>Resign</ActionButton>
+            )}
+            {gameOver && isPlayer && (
+              <ActionButton onClick={handleRematch}>Rematch</ActionButton>
             )}
           </div>
-          <MoveList
-            history={chess.history()}
-            analyses={analyses}
-            activeReviewMove={reviewMoveIndex}
-            onJumpToMove={(idx) => setReviewMoveIndex(idx)}
+
+          <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] px-3 py-2 text-xs">
+            <span className="font-bold text-[var(--ink)]">Status:</span>{' '}
+            <span className="text-[var(--muted)]">
+              {connectionState === 'connecting' && 'Connecting...'}
+              {connectionState === 'open' && (opponentConnected ? 'Connected · 2 players' : 'Connected · waiting')}
+              {connectionState === 'closed' && 'Disconnected · reconnecting...'}
+              {connectionState === 'error' && 'Connection error'}
+            </span>
+          </div>
+
+          {error && (
+            <div className="rounded-[0.75rem] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <GameOverBanner
+            status={status}
+            playerLost={!!gameOver && gameOver.winner !== null && gameOver.winner !== yourColor}
+            onPlayAgain={handleRematch}
           />
+
+          {gameOver && isPlayer && Object.keys(analyses).length === 0 && !analyzing && (
+            <button
+              type="button"
+              onClick={runAnalysis}
+              className="rounded-[0.75rem] border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20"
+            >
+              Analyze game · review your moves
+            </button>
+          )}
+
+          {analyzing && (
+            <div className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass-soft)] px-3 py-2 text-sm">
+              <div className="mb-1 text-[var(--muted)]">Analyzing... {analyzeProgress}%</div>
+              <div className="h-1 overflow-hidden rounded-full bg-[var(--glass)]">
+                <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${analyzeProgress}%` }} />
+              </div>
+            </div>
+          )}
+
+          {Object.keys(analyses).length > 0 && isPlayer && (
+            <GameSummary
+              analyses={analyses}
+              history={chess.history()}
+              playerColor={yourColor as 'w' | 'b'}
+              onReviewMove={(idx) => setReviewMoveIndex(idx)}
+            />
+          )}
+
+          {gameOver && chess.history().length > 0 && (
+            <button
+              type="button"
+              onClick={exportPgn}
+              className="rounded-[0.75rem] border border-[var(--line)] bg-[var(--glass)] px-3 py-2 text-xs font-semibold text-[var(--muted)] hover:bg-[var(--glass-hover)] hover:text-[var(--ink)]"
+            >
+              {pgnCopied ? 'PGN copied ✓' : 'Copy PGN'}
+            </button>
+          )}
+
+          <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--glass-soft)] p-3">
+            {opening && (
+              <div className="mb-2 flex items-baseline gap-2 border-b border-[var(--line)] pb-2">
+                <span className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">Opening</span>
+                <span className="text-xs font-semibold text-[var(--ink)]">{opening}</span>
+              </div>
+            )}
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
+                {inReview ? `Reviewing move ${Math.floor((reviewMoveIndex ?? 0) / 2) + 1}${(reviewMoveIndex ?? 0) % 2 === 0 ? ' (white)' : ' (black)'}` : 'Moves'}
+              </div>
+              {chess.history().length > 0 && (
+                <div className="flex gap-0.5">
+                  <button
+                    type="button"
+                    onClick={prevReview}
+                    disabled={reviewMoveIndex === 0}
+                    className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-0.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-30"
+                    title="Previous move"
+                  >‹</button>
+                  <button
+                    type="button"
+                    onClick={nextReview}
+                    disabled={!inReview}
+                    className="rounded-[0.25rem] border border-[var(--line)] bg-[var(--glass)] px-2 py-0.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--ink)] disabled:opacity-30"
+                    title="Next move"
+                  >›</button>
+                  {inReview && (
+                    <button
+                      type="button"
+                      onClick={exitReview}
+                      className="rounded-[0.25rem] border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                      title="Exit review, return to live game"
+                    >Live</button>
+                  )}
+                </div>
+              )}
+            </div>
+            <MoveList
+              history={chess.history()}
+              analyses={analyses}
+              activeReviewMove={reviewMoveIndex}
+              onJumpToMove={(idx) => setReviewMoveIndex(idx)}
+            />
+          </div>
         </div>
       </div>
     </div>

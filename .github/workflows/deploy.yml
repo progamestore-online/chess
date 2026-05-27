@@ -1,39 +1,47 @@
-name: CI
-
-# Verifies the code builds + tests pass on every push.
-#
-# Deploy is intentionally NOT wired up yet:
-#   1. @progamestore/games isn't on npm, so `pnpm install` fails until the
-#      scope is set up. The CI step below will start passing once it is.
-#   2. The PGS platform doesn't have a shared game-ci.yml workflow yet
-#      (the FGS equivalent is Pages-only and chess deploys as a Worker).
-#      When the PGS shared workflow exists, this file becomes a thin
-#      caller (~15 lines, same shape as the FGS callers).
-#
-# Until then, `wrangler deploy` is run manually from a dev machine after
-# `pnpm build`.
+name: Deploy
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: deploy-prochess
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # No pnpm cache yet (no lockfile until @progamestore/games is on npm).
-      # Add `cache: pnpm` to setup-node above once the lockfile lands.
-      - run: pnpm install --frozen-lockfile=false
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
       - run: pnpm build
+
       - run: pnpm test
+
+      - name: Deploy Worker
+        run: pnpm exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Smoke test
+        run: |
+          sleep 5
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://chess.progamestore.online/)
+          echo "chess.progamestore.online returned HTTP $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::warning::Site returned HTTP $CODE — custom domain may need dashboard config"
+          fi
